@@ -9,11 +9,11 @@ const handler = NextAuth({
     GoogleProvider({
       clientId: process.env.GOOGLE_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    })
+    }),
   ],
   callbacks: {
     async session({ session }) {
-      // store the user id from MongoDB to session
+      // Store the user id from MongoDB to session
       const sessionUser = await User.findOne({ email: session.user.email });
       session.user.id = sessionUser._id.toString();
 
@@ -23,25 +23,46 @@ const handler = NextAuth({
       try {
         await connectToDB();
 
-        // check if user already exists
+        // Check if user already exists based on email
         const userExists = await User.findOne({ email: profile.email });
 
-        // if not, create a new document and save user in MongoDB
+        // If the user doesn't exist, create a new one
         if (!userExists) {
+          // Generate a valid username
+          let generatedUsername = profile.name.replace(/\s+/g, '').toLowerCase();
+
+          // Ensure username is at least 8 characters
+          if (generatedUsername.length < 8) {
+            generatedUsername += Math.random().toString(36).substring(2, 8); // Append random alphanumeric string
+          }
+
+          // Trim username if it exceeds 20 characters
+          generatedUsername = generatedUsername.substring(0, 20);
+
+          // Check if the generated username already exists
+          let isUsernameTaken = await User.findOne({ username: generatedUsername });
+          while (isUsernameTaken) {
+            // If username exists, add a random number suffix to make it unique
+            generatedUsername = generatedUsername.substring(0, 15) + Math.random().toString(36).substring(2, 5);
+            isUsernameTaken = await User.findOne({ username: generatedUsername });
+          }
+
+          // Save the new user in the database
           await User.create({
             email: profile.email,
-            username: profile.name.replace(" ", "").toLowerCase(),
+            username: generatedUsername,
             image: profile.picture,
           });
         }
 
-        return true
+        return true;
       } catch (error) {
-        console.log("Error checking if user exists: ", error.message);
-        return false
+        // Log the error for debugging
+        console.error("Error during sign-in: ", error);
+        return false;
       }
     },
-  }
-})
+  },
+});
 
-export { handler as GET, handler as POST }
+export { handler as GET, handler as POST };
